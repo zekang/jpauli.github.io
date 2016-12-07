@@ -1,0 +1,25 @@
+{
+    "name"        : "carew/boilerplate",
+    "description" : "Carew boilerplate",
+    "license"     : "MIT",
+    "homepage"    : "http://carew.github.com/",
+    "keywords"    : ["carew"],
+    "authors"     : [
+        {
+            "name"  : "Grégoire Pineau",
+            "email" : "lyrixx@lyrixx.info"
+        }
+    ],
+    "require": {
+        "carew/carew": "~2.0",
+        "carew/theme-bootstrap": "~2.0"
+    },
+    "config": {
+        "bin-dir": "bin"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "2.0.x-dev"
+        }
+    }
+}

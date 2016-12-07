@@ -1,0 +1,11 @@
+site:
+    title:        Julien Pauli PHP's life
+    description:  
+    author_name:  Julien Pauli
+    author_email: jpauli@php.net
+    author_url:   http://jpauli.github.io/
+    url_absolute: http://jpauli.github.io/
+
+engine:
+    themes:
+        - %dir%/vendor/carew/theme-bootstrap

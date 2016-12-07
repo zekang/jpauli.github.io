@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Threads and PHP</title>
+
+    <meta name="description" content="">
+    <meta name="author" content="Julien Pauli">
+    <meta name="viewport" content="width=device-width">
+
+    
+    <link rel="canonical" href="http://jpauli.github.io//2017/01/12/threads-and-php.html"/>
+              <link rel="alternate" href="http://jpauli.github.io//feed/atom.xml" type="application/atom+xml" title="Julien Pauli PHP&#039;s life"/>
+      
+        <!-- Latest compiled and minified CSS --><link rel="stylesheet" href="../../../css/bootstrap.min.css"><link rel="stylesheet" href="../../../css/bootstrap-theme.min.css"><link rel="stylesheet" href="http://yandex.st/highlightjs/8.0/styles/pojoaque.min.css">      </head>
+
+  <body>
+          <div class="container">
+                  <div class="page-header">
+            <ul class="list-inline pull-right">
+                                                <li>
+                    <a href="../../../about.html">
+                      About
+                    </a>
+                  </li>
+                                  <li>
+                    <a href="../../../index.html">
+                      Welcome to julien pauli&#039;s page
+                    </a>
+                  </li>
+                                          </ul>
+            <h1>
+              <a href="../../..">
+                Julien Pauli PHP&#039;s life
+              </a>
+            </h1>
+          </div>
+        
+                  <div class="content">
+                                          <h1>
+                  Threads and PHP</h1>
+                          
+              <article>
+    <p class="text-muted">
+      <span class="glyphicon glyphicon-calendar"></span>
+      Jan 12th, 2017
+    </p>
+
+    <div class="body">
+      <h2 id="introduction">Introduction<a href="#introduction" class="anchor">#</a></h2>
+<p>PHP and threads. Just this 3-word sentence, and we could write a book. As usual, we won't, but give informations and details to some degree about the subject</p>
+<p>Let's start by some confusion many people fall in when it comes to such a subject. PHP is not a threaded language. PHP doesn't use threads itself into its heart, and PHP does not natively allow userland code to use threads as parallel mechanism, in any way.</p>
+<p>So PHP is very far from other technologies, such as Java (for exemple). In Java, both the language itself is heavily threaded, and it also allows its users to make use of threads into their own programs. Not PHP. And this is for some reasons.</p>
+<p>PHP's heart is not threaded, mainly for simplicity. When you'll read next chapter, you'll learn that threads is not "a magical technology that allows any program to run faster". Seems like a sales speech isn't it ? We are not sales, but technical , and so we know what we talk about. So PHP's engine does not use threads at the moment. It could in the future, but using threads introduce many many new difficulties in programming, for a result that could not be what you expect. The main difficulty is cross platform thread programming. The second one is shared resources and lock management, and the third one is that not every program can be turned to thread programming.
+PHP's design was born mainly around year 2000, at this time, thread programming was not that spreaded and mature, and engineers behind PHP (mainly Zend) decided to create a full monolithic engine with no threads (also they did not have the resource to ship a stable crossplatform threaded engine).</p>
+<p>Second point is that PHP userland code can't use threads, because it is not how PHP expects your code to run. PHP is a fire-and-forget language, you should treat your request as fast as possible, and release PHP so that it can treat the next-to-come request. PHP has been designed as a glue language : you don't compute complex tasks that could require the usage of threads, but instead you access fast-and-ready resources, glue all together, and send that back to the user. With PHP you do things, and whatever could take "more time than usual" should not be done in PHP. That's why we use "Queue based" system to async some heavy tasks in PHP (Gearman, AMQP, ActiveMQ etc...). Unix way of seeing things : "develop small self-contained tools and link them together". So PHP is not designed to allow massive parallelism but other specialized technologies are - use the right tool for the right problem.</p>
+<h2 id="some-quick-words-on-threads">Some quick words on Threads<a href="#some-quick-words-on-threads" class="anchor">#</a></h2>
+<p>Let's quickly remind souls about threads. Remember that we won't detail many things, and that you may find <a href="https://www.amazon.fr/Threads-Primer-Guide-Multithreaded-Programming/dp/0134436989">in books</a> or <a href="https://computing.llnl.gov/tutorials/pthreads/">on the Web</a> everything you ever wanted to know about threads, in deep.</p>
+<p>Threads are light unit of work treatment that reside into processes. Note the ownership : a process can spawn threads, and a thread must be part of one process (and just one). Process is the base unit of work under an Operating System (OS). Processes are heavy units of work treatment. On multi-CPU machines (nowadays' machines), several CPUs will run in parallel and will compute some load o behalf of running tasks. If two processes A and B are ready to be scheduled, and two CPUs (or two CPU cores) are ready to take some load, then A and B should get scheduled in the same time. The machine will then effectively compute several things in one solo unique unit of time (time frame), we call that "parallelism".</p>
+<p>A process :</p>
+<p><img src="../../../img/threads-and-php/process_structure.png" alt="process_structure"></p>
+<p>A thread : </p>
+<p><img src="../../../img/threads-and-php/thread_structure.png" alt="thread_structure"></p>
+<p>All together :</p>
+<p><img src="../../../img/threads-and-php/process_thread.gif" alt="process_and_thread"></p>
+<p>A and B previously were processes : full independant workloads. Threads are not processes. Threads are unit of executions that live into a process. That is, a process can decide to cut its job into several more little tasks, that could run concurrently. For example, process A and B could each spawn threads, A1, A2 and B1, B2. If the machine hosts several CPUs (8 CPUs for example), then A1, A2, B1 and B2 could be run in the same timeframe.</p>
+<blockquote>
+<p>Using threads, a programmer can decide to cut his process job into several more little tasks, that could run concurrently.</p>
+</blockquote>
+<p>Threads, are a way to cut a process job into several small jobs, that could be run in parallel (in the same timeframe). Threads are run barely the same way processes are : they own a state that the Kernel thread scheduler will use to manage them.</p>
+<p><img src="../../../img/threads-and-php/threads_lifetime.gif" alt="threads_lifetime"></p>
+<p>Threads are lighter than processes, they only need a stack and some registers, whereas a process needs many more things (a new VM frame from the kernel, a heap, some signal informations, some file descriptor informations, some locks informations etc...).</p>
+<p>Processes memory is hardware managed by the Kernel and the MMU, whereas thread memory is software managed by the programmer and the threading library used.</p>
+<blockquote>
+<p>What you can memorize is that threads are lighter than processes and more easily manageable. If well used, they'll run faster than processes, as the OS Kernel is very less involved in thread management and scheduling that it would be with processes.</p>
+</blockquote>
+<h3 id="threads-memory-layout">Threads memory layout<a href="#threads-memory-layout" class="anchor">#</a></h3>
+<p>As we've seen, threads have their own stack, that is when they access variables declared into a function, they own their own copy of such data.</p>
+<p>But we can't say the same about the process heap : that latter is shared accross threads, so are global variables and file descriptors. This is an advantage, or a drawback. If you only read from global memory, you need to read at the right moment (after thread X and before thread Y for example). If you happen to write to it, you then need to make sure several threads don't try to write to the same memory area at the same time : they would corrupt that area and leave the memory in an unpredictable state; what we call a <strong>race condition</strong>. This is the main challenge behind thread programming.</p>
+<p>For those concurrent access to happen, you need to incorporate into your code some programming technics such as reentrancy or synchronization routines.
+Reentrancy prevents concurrency, whereas synchronization masters concurrency in a predictable way.</p>
+<blockquote>
+<p>Processes don't share any memory between them, the OS perfectly isolate them. Threads, however, share a <em>big amount</em> of the same process memory.</p>
+</blockquote>
+<p>Having a big part of the memory shared, there is a need to synchronize common memory access, technical tools are used such as semaphores or mutexes (the most common ones). Those are based on a "lock" concept, that is if the resource is locked and a thread tries to access it, it will (by default) block, waiting for the shared resource to be available.
+And this is why using threads doesn't automatically mean your program will run faster. If you don't divide the tasks efficiently, and if you don't manage the shared memory locking efficiently, you'll end up having a program that takes more time to run than it would in one solo process with no threads : just because your threads keep waiting for each other (and I don't talk about dead locks, starvation, etc...).</p>
+<p><strong>Thread programming is trully complex if you are not used to it</strong>. You'll need many many hours of practice, and tons of WTF moments to gain experience to work with threads.
+Should you forget one little detail and your whole program will blow up at your face. Debugging threads is harder than debugging a thread-free program, as we are talking about real use cases of hundreds or thousands of threads running into a process. You get lost into your mind, and you quickly sink deep in the pool.</p>
+<blockquote>
+<p>Thread programming is hard. Good thread programming, and good program parallel computing is really a challenge that takes many time to master.</p>
+</blockquote>
+<p>As sharing memory that way is not always what we want, Thread Local Storage (TLS) appeared. TLS is mainly a concept of "globals owned by one thread and not shareable to others", those are memory areas that represent global state, but private to each thread (like in a process-only way).
+To implement TLS, on thread creation, one must allocate some process heap memory, ask the thread library for a key and associate that key to that storage. Every further access will use the key to unlock the thread-specific storage. A destructor is needed at the end of thread life to destroy allocated resources (traditional heap usage here).</p>
+<blockquote>
+<p>An application is said "thread safe", when it fully masters every global resource access in a 100% predictable way. If not : you get bitten by the scheduler : random things start to happen and the game is over.</p>
+</blockquote>
+<h3 id="thread-libraries">Thread libraries<a href="#thread-libraries" class="anchor">#</a></h3>
+<p>As you may have guessed, threads require some OS Kernel help. Threads have appeared in OS back in mid nineties, so that's quite a long time ago : they are mature and managed by OS Kernels since a long time.</p>
+<p>But there still exists some crossplatform issues. Especially Windows against Unix worlds. Both have adopted different threading models, and different thread libraries.</p>
+<blockquote>
+<p>Programming with threads and supporting crossplatform is still a challenge as of nowadays.</p>
+</blockquote>
+<p>Under Linux, to create both a thread or a process, the Kernel system call is <code>clone()</code>. But that system call is extremely complex, thus as usual some C code have emerged around the syscalls to ease day to day programming using threads. Thread operations are not yet managed by the libc (C11 standard has started such a move), but by external libraries. Nowadays, under Unix flavors, <strong>pthread</strong> is used (though other libraries exist). Pthread stands for "Posix threads", which is a POSIX normalization of thread usage and behavior dating back from 1995. Hence, if you want to use threads in your program, you'll need to link it with libpthread, aka pass the <em>-lpthread</em> switch to GCC. Also, libpthread is a library. It is written in C, <a href="http://git.savannah.gnu.org/cgit/hurd/libpthread.git/tree/">open source</a>, and have its own version control and management.</p>
+<p>So nowadays we mainly use the <strong>pthread</strong> library to program threads under Unix flavors. Not going into details again, pthread allows concurrency but parallelism is dependant on the OS and the machine.</p>
+<p>Concurrency is multiple threads running on the same CPU out of order. Parallelism is multiple threads running at the same time on different CPUs.</p>
+<p>Here is some concurrency :</p>
+<p><img src="../../../img/threads-and-php/threads_concurrency.png" alt="threads_concurrency"></p>
+<p>Here is some parallelism :</p>
+<p><img src="../../../img/threads-and-php/threads_parallelism.png" alt="threads_parallelism"></p>
+<h2 id="php-and-threads">PHP and Threads<a href="#php-and-threads" class="anchor">#</a></h2>
+<p>What happens to PHP in there ?. Let's start by reminders :</p>
+<ul><li>PHP is not a threaded language : its engine and its code don't manage threads to parallelize its own internal work.</li>
+<li>PHP doesn't offer threads to users : You can't use threads with the PHP language natively. <a href="https://github.com/krakjoe">Joe Watkins</a>, PHP Core developper, created a nice library that adds threads to userland : <a href="http://pthreads.org/">ext/pthread</a>. It is a nice project, but I personnaly wouldn't use PHP for such tasks : it's not the right language for that, I'll go with C or Java for example.</li>
+</ul><p>So, what about threads and PHP, what's the point ?</p>
+<h3 id="how-php-treats-requests">How PHP treats requests<a href="#how-php-treats-requests" class="anchor">#</a></h3>
+<p>It is all about how PHP will handle HTTP requests. To serve several clients at the same time, a webserver needs some concurrency (or some parallelism). You can't pause everyone as you are answering to just one client right ?</p>
+<p>Thus, what servers usually do is they use multiple processes, or multiple threads , to answer clients.</p>
+<p>Historically, under Unix, the process model is used. Simply because processes is the basic of Unix, once Unix was born, processes was born with the ability to create new ones (<code>fork()</code>), destroy them (<code>exit()</code>) and synchronize them (<code>wait()</code>, <code>waitpid()</code>). In such environnements, multiple PHP will serve multiple requests for clients, but <strong>each one will be in its own process</strong>.</p>
+<p>If you remember the introduction chapters, in such a case, there is nothing to do into PHP code : processes are fully isolated between them, and process A treating request A about client data A will not be able to communicate (read or write) with process B treating request B about client B. And this is what we want.</p>
+<p>Such models include <em>php-fpm</em>, and <em>Apache with mpm_prefork</em>. Usually in 98% of cases you use one of theses two architectures.</p>
+<p>Things get more complicated under Windows, or under Unixes where your server uses threads.</p>
+<p>Windows is a great operating system (true). It has just one drawback : its source code is closed. But many technical resources about its internal engine can be found on the Web or <a href="https://www.amazon.com/Windows-Internals-Part-Developer-Reference/dp/0735648735">into books</a>. Microsoft engineers <a href="https://technet.microsoft.com/en-us/">share many knowledge</a> about how Windows works into its heart.</p>
+<p>Microsoft Windows has taken a different path from Unixes when it comes to concurrency or parallelism. Windows heavily relies on threads. In fact, creating a process in Windows is such an overkill heavy task that you usually don't do it. Under Windows you use threads, everywhere, everytime. Windows threads are order of magnitude more powerful that Linux ones ; yes they are.</p>
+<p>So when you run PHP under Windows, the webserver (whatever it is, IIS , Apache, FooBarBaz) <strong>will treat different clients into threads, and not into processes.</strong>
+That means that in such an environment, PHP will run into a thread ; and in that case; PHP must be extra carefull about thread specifications : <strong>it must be thread safe</strong>.</p>
+<p>PHP must be thread safe, that is it must master the concurrency it hasn't itself created, but leaves in/with. As you may have guessed, that means PHP will have to find a way to protect its access to its own global variables ; and there are many of them into PHP's heart.</p>
+<p>The layer that is responsible of such a protection is called <strong>Zend Thread Safety</strong>, aka ZTS.</p>
+<p>Please, note that the same is true under Unix if you happen to use threads as the way of parallelize client request treatments, but that is a very uncommon situation as under Unix we are usually used to using classical processes for such a task, though using thread is still possible and may be an advantage in term of performances. Traditionaly a system can run many more threads that it could with processes : threads are lighter.
+Also, if you happen to use a PHP extension that requires thread safety to be activated - such as ext/pthread - you will need a thread safe PHP.</p>
+<h2 id="zend-thread-safety-internal-details">Zend Thread Safety internal details<a href="#zend-thread-safety-internal-details" class="anchor">#</a></h2>
+<p>Ok here we go. ZTS is activated using the <em>--enable-maintainer-zts</em> switch. As said before, you usually don't need this switch, until you run PHP under Windows, or you run PHP with an extension that needs the engine to be thread safe (like ext/pthread for example).</p>
+<p>To check against ZTS, you have several ways to achieve that. Use CLI and <code>php -v</code>, which tells you NTS (Not Thread Safe) or ZTS (Zend Thread Safe).</p>
+<p><img src="../../../img/threads-and-php/php_cli.png" alt="zts_cli"></p>
+<p>You can also ask <code>phpinfo()</code> :</p>
+<p><img src="../../../img/threads-and-php/phpinfo_zts.png" alt="phpinfo_zts"></p>
+<p>In your code, you can read the <code>PHP_ZTS</code> constant value from PHP.</p>
+<pre><code>if (PHP_ZTS) {
+    echo "You are running a thread safe version of the PHP engine";
+}</code></pre>
+<p>All PHP's heart is thread safe when compiled with ZTS. What could not be thread safe are extensions you activated. Official PHP extensions (distributed with PHP) are all thread safe, but for other third-party ones, who knows ? You will see in a few moment that mastering thread safety from PHP extensions needs some special programming API usage, and as always with threads : one miss and you risk to have your <strong>whole server</strong> blow at your face.</p>
+<p>Remember that with threads, if you dont call reentrant functions (many from libc) or if you access a true global variable blindly, you are going to generate some weird behaviors <strong>in all the sibling threads</strong>. Translated to the PHP use-case : if you mess-up with threads in one of your extension, you are going to impact every client occupied in every other thread of the webserver! This is absolutely dramatic situation, as one client could corrupt every other clients data.</p>
+<p>When designing PHP extensions, ultra care and very good knowledge of thread programming are necessary. If not, when running in a thread environment, you're gonna break the whole webserver in a very nasty random way that you won't be able to debug in reasonnable time.</p>
+<blockquote>
+<p>When designing PHP extensions, if you mess-up with threads, you are going to impact every client occupied in every other thread of the webserver. You could even not notice that, as bad thread programming usually leads to horrible random behaviors you can't reproduce easilly.</p>
+</blockquote>
+<h3 id="use-and-design-reentrant-functions">Use and design reentrant functions<a href="#use-and-design-reentrant-functions" class="anchor">#</a></h3>
+<p>When designing a PHP extension, use <a href="https://en.wikipedia.org/wiki/Reentrancy_(computing)">reentrant functions</a>. Reentrant functions are functions that don't rely on any global state to work. This is simplified, the true definition is that reentrant functions are functions that can be called as they've not finished to be called yet. Think about functions that can be run in parallel in two or more threads. It then becomes obvious that if such functions use global state, they are not reentrant (but they could lock their global state, and thus be thread-safe either ;-)).
+Many libc traditional functions are not reentrant, because they've been designed in a time where threads simply did not exist yet. So some libc (especially glibc) publish reentrant equivalent functions as functions suffixed by <code>_r()</code>. Also, the new C11 standard gives a big room to threads, and C11 libcs benefit from a rewrite with an s suffix : <code>_s()</code>  (<code>localtime_s()</code> for example).</p>
+<p>Aka, <code>strtok()</code> => <code>strtok_r()</code>; <code>strerror()</code>, <code>strerror_r()</code>; <code>readdir()</code> => <code>readdir_r()</code>; or <code>gethostbyname()</code> => <code>gethostbyname_r()</code> etc...</p>
+<p>PHP itself provides some of them mainly for crossplatforms purpose. <a href="https://github.com/php/php-src/blob/PHP-7.1/main/reentrancy.c">Have a look at main/reentrancy.c</a>.</p>
+<p>Also, if you happen to write your own C functions, think about reentrancy. If you can pass your function everything it needs as arguments (on the stack or through registers so), and if that function doesn't use any global/static variables and any non-reentrant function; it is then reentrant.</p>
+<h3 id="don-t-link-against-non-thread-safe-libraries">Don't link against non-thread safe libraries<a href="#don-t-link-against-non-thread-safe-libraries" class="anchor">#</a></h3>
+<p>Still obvious, remember that thread programming is about the whole process memory image being shared, and the whole process memory image includes any linked libraries.</p>
+<p>If your extension links against a known-to-not-be-thread-safe library, then you will have to develop you own thread safety tricks to protect access to global state into such a library. Something really common in C and thread programing, but that is easy to miss.</p>
+<h3 id="zts-usage-and-details">ZTS usage and details<a href="#zts-usage-and-details" class="anchor">#</a></h3>
+<p>ZTS is Zend Thread Safety. This is a layer of code that controls access to Thread global variables, using TLS as of PHP 7 (Thread Local Storage).</p>
+<p>When we develop the PHP language, or as a PHP extension writer, we must differentiate between two kinds of globals in code.</p>
+<p>We have <em>true globals</em>, those are plain traditionnal C global variables. As we have seen, such variables are not bad in design, but as we did not protect them against concurrency in threads, we are only allowed to read them when PHP is treating a request.
+The case is that those variables (we call them "true globals") are created and written to <strong>before</strong> any thread is created yet. That step is called the <em>module init</em> step in PHP internal vocabulary , and we can clearly see it in PHP extensions, as they are hooked about it :</p>
+<pre><code>static int val; /* true global */
+
+PHP_MINIT(wow_ext) /* PHP Module initialization */
+{
+    if (something()) {
+        val = 3; /* writing to a true global */
+    }
+}</code></pre>
+<p>The above pseudo-code details what every PHP extension could look like. Extensions owns several hooks that get triggered throught PHP's life, the so-called MINIT() hook is about PHP initialization. During such a step, PHP is starting, and one can then write or read to a global variable safely, like its done in the example.</p>
+<p>Then come the second important hook, RINIT(), or request initialization. This step is called on every extension for every new request to deal with. That is, RINIT() may be called thousands of times in an extension.</p>
+<p>At this step, <strong>PHP already leaves in a thread</strong>. The webserver will have threaded the initial process, so in RINIT(), you <strong>must be thread safe</strong>.
+As threads are created to handle several requests at the same time, this is perfectly logical. What one should keep in mind, is that <strong>you don't create the thread</strong>. PHP doesn't thread itself, never. This is the webserver that does it.</p>
+<p>We use so called <em>globals</em>, or <em>thread globals</em>. Those are global variables, but that are thread protected by the ZTS layer. Like this :</p>
+<pre><code>PHP_RINIT(wow_ext) /* PHP Request initialization */
+{
+    if (something()) {
+        WOW_G(val) = 3; /* writing to a thread global */
+    }
+}</code></pre>
+<p>To access thread globals, we used a macro, <code>WOW_G()</code> here. We will now detail what happens behind the scene of this macro.</p>
+<h2 id="the-need-of-macros">The need of macros<a href="#the-need-of-macros" class="anchor">#</a></h2>
+<p>Remember. When PHP is threaded, all the request-related global state must be protected in access. But when PHP is not threaded, the protection is not needed anymore, as each process got its own part of memory : nothing is shared.</p>
+<p>So, the way of accessing a request-related global will differ by the environment (multitask engine used). That means that we had to find a way so that accessing a request-bound global is done apparently the same way, whatever the environment.</p>
+<p>We used macros for that, as they are just dedicated to such tasks.</p>
+<p>The <code>WOW_G()</code> macro above will resolve very differently according to the multitask engine PHP is running on (process or threads).
+And that is something you change by recompiling your extension, this is why PHP extensions are not compatible between ZTS mode and non-ZTS mode : this is not binary compatible !</p>
+<blockquote>
+<p>Obviously ZTS is not binary compatible with NZTS. Extensions must be recompiled when switching from one mode to the other</p>
+</blockquote>
+<p>See it : the <code>WOW_G()</code> macro usually resolves something like this in a process mode :</p>
+<pre><code>#ifdef ZTS
+#define WOW_G(v) wow_globals.v
+#endif</code></pre>
+<p>And something like this in a threaded mode :</p>
+<pre><code>#ifdef ZTS
+#define WOW_G(v) wow_globals.v
+#else
+#define WOW_G(v) (((wow_globals *) (*((void ***) tsrm_get_ls_cache()))[((wow_globals_id)-1)])->v)
+#endif</code></pre>
+<p>Looks more complex for ZTS mode isnt it ?</p>
+<p>In process mode, that is in NZTS (Non Zend Thread Safe), a true global is used, here it is named <em>wow_globals</em>. This variable represents a structure containing the global variables, and you access every member into it with the macro. <code>WOW_G(foo)</code> leads to <code>wow_globals.foo</code>.
+Obviously, you'll need to declare such a variable, and eventually to zero it at startup. This is done using a macro as well (as the way to do that will differ in ZTS mode). You do it like this :</p>
+<pre><code>ZEND_BEGIN_MODULE_GLOBALS(wow)
+    int foo;
+ZEND_END_MODULE_GLOBALS(wow)
+
+ZEND_DECLARE_MODULE_GLOBALS(wow)</code></pre>
+<p>The macros then resolves to</p>
+<pre><code>#define ZEND_BEGIN_MODULE_GLOBALS(module_name) typedef struct _zend_##module_name##_globals {
+#define ZEND_END_MODULE_GLOBALS(module_name) } zend_##module_name##_globals;
+
+#define ZEND_DECLARE_MODULE_GLOBALS(module_name) zend_##module_name##_globals module_name##_globals;</code></pre>
+<p>And that's it. Pretty easy in process mode.</p>
+<p>In threaded mode, aka using ZTS, like you can spot, there is no C true global anymore but the globals declaration look the same. Look :</p>
+<pre><code>#define ZEND_BEGIN_MODULE_GLOBALS(module_name) typedef struct _zend_##module_name##_globals {
+#define ZEND_END_MODULE_GLOBALS(module_name) } zend_##module_name##_globals;
+
+#define WOW_G(v) (((wow_globals *) (*((void ***) tsrm_get_ls_cache()))[((wow_globals_id)-1)])->v)</code></pre>
+<p>Declaring our globals is done the same way in ZTS or NZTS.</p>
+<p>But accessing them looks a lot different. In ZTS, there is a call to the function <code>tsrm_get_ls_cache()</code>. This is the call to the Thread Local Storage (TLS), that is it will return a memory area that is bound to the current specific thread. Like you can see, this memory area seem complex, as the first cast we perform to it is a (void ***) cast, which let us smell that there is a lot of complexity behind it.</p>
+<h2 id="the-tsrm-layer">The TSRM layer<a href="#the-tsrm-layer" class="anchor">#</a></h2>
+<p>ZTS is designed using what we call the TSRM layer. Thread Safe Resource Manager layer. This is just some plain C code, nothing more !</p>
+<p>TSRM is a layer of code, that makes ZTS possible. It is mainly stuck <a href="https://github.com/php/php-src/tree/master/TSRM">into the /TSRM</a> folder of PHP source code. Have a look at it, it is interesting even if we'll detail it here.</p>
+<p>TSRM is not a perfect layer, it is globally well designed and ages back from PHP 5 beginning era (~2004). It is able to deal with several low-level threading libraries : Gnu Portable Thread, Posix Threads, State Threads, Win32 Threads or BeThreads. The layer you want it to use can be chosen at configuration time (./configure --with-tsrm-xxxxx).</p>
+<p>We will only deal with the pthreads implementation when analysing TSRM in deep.</p>
+<h3 id="tsrm-boot">TSRM boot<a href="#tsrm-boot" class="anchor">#</a></h3>
+<p>At PHP boot, that is at module initialization, PHP quickly calls for <code>tsrm_startup()</code>. As PHP doesn't know yet how many threads and resources to build a thread-safe protection for, it prepares thread tables with just one element into them. Those tables will later grow, they are then allocated using a traditionnal <code>malloc()</code>.</p>
+<p>This startup step is also important as it is here that we create both the TLS key, and the TLS mutex we'll need to synchronize.</p>
+<pre><code>static pthread_key_t tls_key;
+
+TSRM_API int tsrm_startup(int expected_threads, int expected_resources, int debug_level, char *debug_filename)
+{
+    pthread_key_create( &tls_key, 0 ); /* Create the key */
+
+    tsrm_error_file = stderr;
+    tsrm_error_set(debug_level, debug_filename);
+    tsrm_tls_table_size = expected_threads;
+
+    tsrm_tls_table = (tsrm_tls_entry **) calloc(tsrm_tls_table_size, sizeof(tsrm_tls_entry *));
+    if (!tsrm_tls_table) {
+        TSRM_ERROR((TSRM_ERROR_LEVEL_ERROR, "Unable to allocate TLS table"));
+        return 0;
+    }
+    id_count=0;
+
+    resource_types_table_size = expected_resources;
+    resource_types_table = (tsrm_resource_type *) calloc(resource_types_table_size, sizeof(tsrm_resource_type));
+    if (!resource_types_table) {
+        TSRM_ERROR((TSRM_ERROR_LEVEL_ERROR, "Unable to allocate resource types table"));
+        free(tsrm_tls_table);
+        tsrm_tls_table = NULL;
+        return 0;
+    }
+
+    tsmm_mutex = tsrm_mutex_alloc(); /* Allocate a mutex */
+}
+
+#define MUTEX_T pthread_mutex_t *
+
+TSRM_API MUTEX_T tsrm_mutex_alloc(void)
+{
+    MUTEX_T mutexp;
+    mutexp = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+    pthread_mutex_init(mutexp,NULL);
+    return mutexp;
+}</code></pre>
+<h3 id="tsrm-resources">TSRM Resources<a href="#tsrm-resources" class="anchor">#</a></h3>
+<p>Now that TSRM layer is booted, it is time to add new <strong>resources</strong> to it. A TSRM resource, is a memory area that represents a set of global variables, usually dedicated to a PHP extension, and that must be own by the current thread or protected for access.</p>
+<p>So, that memory area has a size, and would need some initialization (constructor) and deinitialization (destructor). Usually initialization is just about zeroing the area whereas deinit does nothing.</p>
+<p>That memory area, which is called a TSRM resource, will be given a unique resource ID by the TSRM layer. The caller then should save such an ID, as it will need it later on to be given back the protected memory area from TSRM.</p>
+<p>Here is the TSRM function that creates a new resource :</p>
+<pre><code>typedef struct {
+    size_t size;
+    ts_allocate_ctor ctor;
+    ts_allocate_dtor dtor;
+    int done;
+} tsrm_resource_type;
+
+TSRM_API ts_rsrc_id ts_allocate_id(ts_rsrc_id *rsrc_id, size_t size, ts_allocate_ctor ctor, ts_allocate_dtor dtor)
+{
+    int i;
+
+    tsrm_mutex_lock(tsmm_mutex);
+
+    /* obtain a resource id */
+    *rsrc_id = id_count++;
+
+    /* store the new resource type in the resource sizes table */
+    if (resource_types_table_size < id_count) {
+        resource_types_table = (tsrm_resource_type *) realloc(resource_types_table, sizeof(tsrm_resource_type)*id_count);
+        if (!resource_types_table) {
+            tsrm_mutex_unlock(tsmm_mutex);
+            TSRM_ERROR((TSRM_ERROR_LEVEL_ERROR, "Unable to allocate storage for resource"));
+            *rsrc_id = 0;
+            return 0;
+        }
+        resource_types_table_size = id_count;
+    }
+    resource_types_table[(*rsrc_id)-1].size = size;
+    resource_types_table[(*rsrc_id)-1].ctor = ctor;
+    resource_types_table[(*rsrc_id)-1].dtor = dtor;
+    resource_types_table[(*rsrc_id)-1].done = 0;
+
+    /* enlarge the arrays for the already active threads */
+    for (i=0; i < tsrm_tls_table_size; i++) {
+        tsrm_tls_entry *p = tsrm_tls_table[i];
+
+        while (p) {
+            if (p->count < id_count) {
+                int j;
+
+                p->storage = (void *) realloc(p->storage, sizeof(void *)*id_count);
+                for (j=p->count; j<id_count; j++) {
+                    p->storage[j] = (void *) malloc(resource_types_table[j].size);
+                    if (resource_types_table[j].ctor) {
+                        resource_types_table[j].ctor(p->storage[j]);
+                    }
+                }
+                p->count = id_count;
+            }
+            p = p->next;
+        }
+    }
+    tsrm_mutex_unlock(tsmm_mutex);
+
+    return *rsrc_id;
+}</code></pre>
+<p>As you can see, this function requires a mutex lock. If it is called into a child thread (it will be, for every of them), it will then lock other threads for the time it needs to manipulate the global thread storage state.</p>
+<p>Our new resource is added to the dynamic <code>resource_types_table[]</code> array and is given a unique identifier, <code>rsrc_id</code>, which keeps incrementing as we add resources.</p>
+<h3 id="on-request-startup">On request startup<a href="#on-request-startup" class="anchor">#</a></h3>
+<p>Now we are ready to treat requests. Remember that each request will be served into its own thread. So, what happens when a new request shows in ?
+At the very beginning of every new request, the <code>ts_resource_ex()</code> function is called. This function reads the current thread id and tries to fetch the ressources allocated for this thread, aka the memory areas dedicated for globals for the current thread. If none found (new thread), then it will create the ressources for the current thread, based on the model it built at PHP Startup.
+This is done using <code>allocate_new_resource()</code></p>
+<pre><code>static void allocate_new_resource(tsrm_tls_entry **thread_resources_ptr, THREAD_T thread_id)
+{
+    int i;
+
+    TSRM_ERROR((TSRM_ERROR_LEVEL_CORE, "Creating data structures for thread %x", thread_id));
+    (*thread_resources_ptr) = (tsrm_tls_entry *) malloc(sizeof(tsrm_tls_entry));
+    (*thread_resources_ptr)->storage = NULL;
+    if (id_count > 0) {
+        (*thread_resources_ptr)->storage = (void **) malloc(sizeof(void *)*id_count);
+    }
+    (*thread_resources_ptr)->count = id_count;
+    (*thread_resources_ptr)->thread_id = thread_id;
+    (*thread_resources_ptr)->next = NULL;
+
+    /* Set thread local storage to this new thread resources structure */
+    tsrm_tls_set(*thread_resources_ptr);
+
+    if (tsrm_new_thread_begin_handler) {
+        tsrm_new_thread_begin_handler(thread_id);
+    }
+    for (i=0; i<id_count; i++) {
+        if (resource_types_table[i].done) {
+            (*thread_resources_ptr)->storage[i] = NULL;
+        } else
+        {
+            (*thread_resources_ptr)->storage[i] = (void *) malloc(resource_types_table[i].size);
+            if (resource_types_table[i].ctor) {
+                resource_types_table[i].ctor((*thread_resources_ptr)->storage[i]);
+            }
+        }
+    }
+
+    if (tsrm_new_thread_end_handler) {
+        tsrm_new_thread_end_handler(thread_id);
+    }
+
+    tsrm_mutex_unlock(tsmm_mutex);
+}</code></pre>
+<h3 id="extensions-local-storage-cache">Extensions Local Storage cache<a href="#extensions-local-storage-cache" class="anchor">#</a></h3>
+<p>In PHP 7, each extension may declare a local storage cache. That is each extension should read its own thread local storage area at every new thread startup, instead of iterating the list of storages at every global access.
+This is not done magically, and requires several things.</p>
+<p>First, you must compile PHP to support the cache : pass <strong>-DZEND_ENABLE_STATIC_TSRMLS_CACHE=1</strong> to your compilation line. This should be the default however.
+Then, you should now use the <code>ZEND_TSRMLS_CACHE_DEFINE()</code> macro when you declare your extension globals :</p>
+<pre><code>#define ZEND_TSRMLS_CACHE_DEFINE(); __thread void *_tsrm_ls_cache = ((void *)0);</code></pre>
+<p>Like you can see, that declares a true C global, but with the special <em>__thread</em> declaration. This is used to <a href="https://gcc.gnu.org/onlinedocs/gcc-4.2.4/gcc/Thread_002dLocal.html">tell the compiler</a> that this variable will be thread specific.</p>
+<p>Then now, what you must do is populate this void* storage with the storage reserved for your globals by the TSRM Layer.
+You may use <code>ZEND_TSRMLS_CACHE_UPDATE()</code> in your globals constructor for that :</p>
+<pre><code>PHP_GINIT_FUNCTION(my_ext)
+{
+#ifdef ZTS
+    ZEND_TSRMLS_CACHE_UPDATE();
+#endif
+    /* Continue initialization here */
+}</code></pre>
+<p>Here is the macro expansion :</p>
+<pre><code>#define ZEND_TSRMLS_CACHE_UPDATE() _tsrm_ls_cache = tsrm_get_ls_cache();</code></pre>
+<p>And for pthread implementation :</p>
+<pre><code>#define tsrm_get_ls_cache pthread_getspecific(tls_key)</code></pre>
+<p>Finally you should better understand how globals are now accessed in extensions, using macros :</p>
+<pre><code>#ifdef ZTS
+#define MY_G(v) (((my_globals *) (*((void ***) _tsrm_ls_cache))[((my_globals_id)-1)])->(v))</code></pre>
+<p>Like you can see, using the MY_G() macro to access globals, when using a thread environment, it will expand to probe the <code>_tsrm_ls_cache</code> area using the id of this extension : <code>my_globals_id</code>.</p>
+<p><img src="../../../img/threads-and-php/php_extensions_resources.png" alt="php_extensions_resources"></p>
+<p>As we've seen, every extension is considered a resource and is given some space for its globals. The id is used to get back the storage for this specific extension. TSRM will have created that storage for the current thread when a new request/thread is born.</p>
+<h2 id="conclusion">Conclusion<a href="#conclusion" class="anchor">#</a></h2>
+<p>Thread programming is not an easy task. Here, I just showed you how PHP deals with program globals management : it isolates every global storage using a TLS that is created for each new thread at request startup, by the engine and the dedicated layer : TSRM.
+It locks a mutex, creates the storage for the current thread globals, then releases the mutex.
+That way, every extension and every part of PHP may access its own storage without having to lock the mutex on each access.</p>
+<p>Everything is abstracted behind the TSRM layer : a layer of C code that ease globals management, especially for extension creators. You use a macro to access your global space, and if you run under ZTS, that macro will expand to the specific code to access only your little storage in the middle of every extensions.
+Using the TSRM cache, you don't need a lookup for every global access but you are given a pointer to your specific storage, you cache it and use it back when you need access to a global.</p>
+<p>Obviously, this is for request-bound globals. You may still use true C globals, but don't try to write to them as you are servinf a request : you'll mess up the entire colossus and experiment hard-to-debug strange behaviors, if not crashing the whole webserver.</p>
+    </div>
+
+      </article>
+          </div>
+        
+                          <footer>
+            <p class="text-center">
+              &copy;
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2017
+              <small>
+                with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
+              </small>
+            </p>
+          </footer>
+        
+      </div>
+    
+    
+              <script src="../../../js/jquery-2.1.0.min.js"></script>
+      <script src="../../../js/bootstrap.min.js"></script>
+      <script src="http://yandex.st/highlightjs/8.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script>
+    
+      </body>
+</html>
